@@ -13,6 +13,45 @@ cat > /tmp/_expected.json << 'EXPECTED_EOF'
 {"fail_to_pass": {{ instance.expected.fail_to_pass | tojson }}, "pass_to_pass": {{ instance.expected.pass_to_pass | tojson }}, "fail_to_fail": {{ instance.expected.fail_to_fail | default([]) | tojson }}, "fail_to_fail_strict": {{ instance.expected.fail_to_fail_strict | default(true) | tojson }}}
 EXPECTED_EOF
 
+# --- Compute the `go test` run set from the expected lists -------------------
+# Emits one "<import-path>\t<run-regexp>" line per package into _run_groups.tsv
+# so only the listed tests run (scoped by -run + package) instead of ./....
+# Inlined (not a separate script) so run.sh is self-contained and portable.
+# Test names are "<import-path>.<TestName>"; the final dot is the boundary since
+# a Go test identifier never contains a dot. Top-level names for a package are
+# batched into one "^(TestA|TestB)$" alternation; a name that already carries a
+# subtest path ("TestA/sub") is anchored per slash element.
+python3 - << 'EE_SELECT_EOF' > /tmp/_run_groups.tsv
+import collections, json, re, sys
+try:
+    data = json.load(open("/tmp/_expected.json"))
+except Exception:
+    data = {}
+names = []
+for key in ("fail_to_pass", "pass_to_pass"):
+    names.extend(data.get(key, []) or [])
+top = collections.defaultdict(set)
+explicit = []
+for name in names:
+    if not name or name == "*":
+        continue
+    pkg, sep, test = name.rpartition(".")
+    if not sep or not pkg or not test:
+        continue
+    if "/" in test:
+        explicit.append((pkg, test))
+    else:
+        top[pkg].add(test)
+out = []
+for pkg in sorted(top):
+    alt = "|".join(re.escape(t) for t in sorted(top[pkg]))
+    out.append(pkg + "\t^(" + alt + ")$")
+for pkg, test in explicit:
+    anchored = "/".join("^" + re.escape(e) + "$" for e in test.split("/"))
+    out.append(pkg + "\t" + anchored)
+sys.stdout.write("".join(line + "\n" for line in out))
+EE_SELECT_EOF
+
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 OVERALL_START=$SECONDS
 
@@ -32,9 +71,11 @@ _run_tests() {
 
   set +e
   # Run only the tests named in fail_to_pass + pass_to_pass, scoped to the
-  # package(s) they live in, instead of the whole repo (./...). The selector
-  # emits one "<import-path>\t<run-regexp>" line per package; each becomes a
-  # separate gotestsum invocation writing its own JUnit XML into ARTIFACTS_DIR.
+  # package(s) they live in, instead of the whole repo (./...). Each line of
+  # _run_groups.tsv (built near the top of this script) is one package; each
+  # becomes a separate gotestsum invocation writing its own JUnit XML into
+  # ARTIFACTS_DIR. Reading from a file (not a process substitution) keeps this
+  # portable across shells.
   local idx=0
   while IFS=$'\t' read -r importpath runregex; do
     [ -z "$importpath" ] && continue
@@ -44,7 +85,7 @@ _run_tests() {
       >> "/tmp/${label}_stdout.log" 2>> "/tmp/${label}_stderr.log"
     local rc=$?
     if [ "$rc" -ne 0 ]; then exit_code=$rc; fi
-  done < <(python3 "$EVAL_DIR/scripts/ee_bench_run_selector.py" /tmp/_expected.json)
+  done < /tmp/_run_groups.tsv
   # NOTE: do not `set -e` here — errexit is global, not function-scoped, so it
   # would leak into the caller's `set +e` block and abort the script when a run
   # returns a non-zero test exit code (the expected fail_to_pass case). The
