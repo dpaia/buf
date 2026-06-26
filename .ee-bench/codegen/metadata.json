@@ -10,7 +10,7 @@
   "base_commit": "8d1bdff137dc8c730dbb096a1edccbb63b4ab0f3",
   "expected": {
     "fail_to_pass": [
-      "github.com/bufbuild/buf/private/buf/cmd/buf.TestBreakingAgainstRegistryFlag"
+      "github.com/bufbuild/buf/private/buf/cmd/buf.TestLintNoSourceCodeInfoIgnores"
     ],
     "pass_to_pass": [
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestSuccess1",
