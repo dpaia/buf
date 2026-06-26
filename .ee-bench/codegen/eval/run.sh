@@ -7,6 +7,12 @@ SUBMISSION_DIR="/ee-bench/submission"
 export ARTIFACTS_DIR="/tmp/test-results"
 mkdir -p "$ARTIFACTS_DIR"
 
+# --- Write expected test lists early (consumed by the run selector below and
+# by the emitter at the end). Kept in a file to avoid shell quoting issues. ---
+cat > /tmp/_expected.json << 'EXPECTED_EOF'
+{"fail_to_pass": {{ instance.expected.fail_to_pass | tojson }}, "pass_to_pass": {{ instance.expected.pass_to_pass | tojson }}, "fail_to_fail": {{ instance.expected.fail_to_fail | default([]) | tojson }}, "fail_to_fail_strict": {{ instance.expected.fail_to_fail_strict | default(true) | tojson }}}
+EXPECTED_EOF
+
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 OVERALL_START=$SECONDS
 
@@ -21,17 +27,30 @@ _run_tests() {
   local exit_code=0
   export ARTIFACTS_DIR="$orig_artifacts/$label"
   mkdir -p "$ARTIFACTS_DIR"
+  : > "/tmp/${label}_stdout.log"
+  : > "/tmp/${label}_stderr.log"
 
   set +e
-  gotestsum --junitfile "$ARTIFACTS_DIR/results.xml" --format standard-quiet -- ./... > "/tmp/${label}_stdout.log" 2> "/tmp/${label}_stderr.log"
-  exit_code=$?
+  # Run only the tests named in fail_to_pass + pass_to_pass, scoped to the
+  # package(s) they live in, instead of the whole repo (./...). The selector
+  # emits one "<import-path>\t<run-regexp>" line per package; each becomes a
+  # separate gotestsum invocation writing its own JUnit XML into ARTIFACTS_DIR.
+  local idx=0
+  while IFS=$'\t' read -r importpath runregex; do
+    [ -z "$importpath" ] && continue
+    idx=$((idx + 1))
+    gotestsum --junitfile "$ARTIFACTS_DIR/results_${idx}.xml" --format standard-quiet \
+      -- -run "$runregex" "$importpath" \
+      >> "/tmp/${label}_stdout.log" 2>> "/tmp/${label}_stderr.log"
+    local rc=$?
+    if [ "$rc" -ne 0 ]; then exit_code=$rc; fi
+  done < <(python3 "$EVAL_DIR/scripts/ee_bench_run_selector.py" /tmp/_expected.json)
   # NOTE: do not `set -e` here — errexit is global, not function-scoped, so it
-  # would leak into the caller's `set +e` block and abort the script when this
-  # function returns a non-zero test exit code (the expected fail_to_pass case).
-  # The caller restores errexit after capturing the return value.
+  # would leak into the caller's `set +e` block and abort the script when a run
+  # returns a non-zero test exit code (the expected fail_to_pass case). The
+  # caller restores errexit after capturing the return value.
 
-  # gotestsum writes JUnit XML directly into ARTIFACTS_DIR; no copy needed.
-
+  # The parser aggregates every results_*.xml file found in ARTIFACTS_DIR.
   python3 "$EVAL_DIR/scripts/ee_bench_parser_junit.py" "$ARTIFACTS_DIR" > "/tmp/${label}_parser.json" 2>/dev/null || echo '{}' > "/tmp/${label}_parser.json"
 
   export ARTIFACTS_DIR="$orig_artifacts"
@@ -130,11 +149,6 @@ OVERALL_DURATION=$(_elapsed $OVERALL_START)
 # --- Write temp files for safe passing to Python emitter ---
 echo "$PATCH_OUTPUT" > /tmp/_patch_output.txt
 cat /tmp/compile_stdout.log /tmp/compile_stderr.log > /tmp/_compile_output.txt 2>/dev/null || true
-
-# --- Write expected test lists to file (avoids shell quoting issues) ---
-cat > /tmp/_expected.json << 'EXPECTED_EOF'
-{"fail_to_pass": {{ instance.expected.fail_to_pass | tojson }}, "pass_to_pass": {{ instance.expected.pass_to_pass | tojson }}, "fail_to_fail": {{ instance.expected.fail_to_fail | default([]) | tojson }}, "fail_to_fail_strict": {{ instance.expected.fail_to_fail_strict | default(true) | tojson }}}
-EXPECTED_EOF
 
 # ============================================================
 # Emit EE-bench JSON v2.0 (7 criteria)

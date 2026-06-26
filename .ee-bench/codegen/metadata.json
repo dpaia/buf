@@ -15,8 +15,6 @@
     "pass_to_pass": [
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestSuccess1",
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestSuccess2",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.TestSuccess1",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.TestSuccess2",
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestSuccess3",
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestSuccess4",
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestSuccess5",
@@ -100,26 +98,34 @@
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestLintWithPaths",
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestBreakingWithPaths",
       "github.com/bufbuild/buf/private/buf/cmd/buf.TestVersion",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.stdin_input",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.no_stdin_input_from_binpb",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.no_stdin_input_from_txtpb",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.no_stdin_input_from_yaml",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.no_stdin_input_from_json",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.json_file_output",
-      "github.com/bufbuild/buf/private/buf/cmd/buf.txt_file_output"
+      "github.com/bufbuild/buf/private/buf/cmd/buf.TestConvertWithImage",
+      "github.com/bufbuild/buf/private/buf/cmd/buf.TestConvertOutput",
+      "github.com/bufbuild/buf/private/buf/cmd/buf.TestCheckLsBreakingRulesFromConfigExceptDeprecated"
     ],
     "fail_to_fail": [],
     "fail_to_fail_strict": true
   },
   "patch": {
-    "test_patterns": ["**/*_test.go"],
-    "source_patterns": ["**/*.go"]
+    "test_patterns": [
+      "**/*_test.go"
+    ],
+    "source_patterns": [
+      "**/*.go"
+    ]
   },
   "environment": {
     "project_root": "/app",
-    "resources": { "cpus": 2, "memory_mb": 4096, "storage_mb": 8192 },
+    "resources": {
+      "cpus": 2,
+      "memory_mb": 4096,
+      "storage_mb": 8192
+    },
     "network_mode": "public",
     "allowed_hosts": [],
-    "timeouts": { "agent_seconds": 1800, "verifier_seconds": 600, "build_seconds": 1200 }
+    "timeouts": {
+      "agent_seconds": 1800,
+      "verifier_seconds": 600,
+      "build_seconds": 1200
+    }
   }
 }
